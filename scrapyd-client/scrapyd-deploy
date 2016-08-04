@@ -68,6 +68,12 @@ def parse_opts(args):
         "--pip-package", metavar="PACKAGE_SPEC",
         help="Package to retrieve from pip, will use the source retrieved to "
         "build the package")
+    parser.add_option("--settings-module", metavar="SCRAPY_SETTINGS_MODULE",
+        help="python module to load as scrapy settings, can be passed also "
+        "through the env var SCRAPY_SETTINGS_MODULE")
+    parser.add_option("--url", metavar="SCRAPYD_URL",
+        help="URL to the scrapyd server, overrides the url definition in the "
+        "target if any")
     return parser.parse_args(args)
 
 
@@ -88,6 +94,9 @@ def main(args):
     exitcode = 0
     tmpdir = tempfile.mkdtemp(prefix="scrapydeploy-")
     try:
+        if opts.settings_module:
+            os.environ['SCRAPY_SETTINGS_MODULE'] = opts.settings_module
+
         if opts.pip_package:
             os.chdir(tmpdir)
             _retry_command(
@@ -191,13 +200,16 @@ def _get_option(section, option, default=None):
     return cfg.get(section, option) if cfg.has_option(section, option) \
         else default
 
-
-def _get_targets():
+def _get_targets(scrapyd_url=None):
     cfg = get_config()
     baset = dict(cfg.items('deploy')) if cfg.has_section('deploy') else {}
     targets = {}
     if 'url' in baset:
         targets['default'] = baset
+    if scrapyd_url:
+        if 'default' not in targets:
+            targets['default'] = {}
+        targets['default']['url'] = scrapyd_url
     for x in cfg.sections():
         if x.startswith('deploy:'):
             t = baset.copy()
@@ -206,9 +218,9 @@ def _get_targets():
     return targets
 
 
-def _get_target(name):
+def _get_target(name='default', scrapyd_url=None):
     try:
-        return _get_targets()[name]
+        return _get_targets(scrapyd_url)[name]
     except KeyError:
         raise _fail("Unknown target: %s" % name)
 
